@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Focus & Ambient Flow</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f8fafc;
+            --accent: #38bdf8;
+            --accent-glow: rgba(56, 189, 248, 0.3);
+            --danger: #f43f5e;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: var(--card);
+            padding: 2.5rem;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 0 20px var(--accent-glow);
+            text-align: center;
+            width: 320px;
+        }
+        h1 { margin-top: 0; font-size: 1.5rem; font-weight: 600; color: var(--accent); }
+        .time { font-size: 4rem; font-weight: 700; margin: 1.5rem 0; font-variant-numeric: tabular-nums; }
+        .buttons, .ambient-controls { display: flex; gap: 0.75rem; justify-content: center; margin-bottom: 1.25rem; }
+        button {
+            background-color: transparent;
+            border: 2px solid var(--accent);
+            color: var(--accent);
+            padding: 0.5rem 1.25rem;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        button:hover { background-color: var(--accent); color: var(--bg); }
+        button.active { background-color: var(--danger); border-color: var(--danger); color: white; }
+        .mode-label { font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Focus Flow</h1>
+    <div class="mode-label" id="modeDisplay">Work Time</div>
+    <div class="time" id="timeDisplay">25:00</div>
+    
+    <div class="buttons">
+        <button id="startBtn" onclick="toggleTimer()">Start</button>
+        <button onclick="resetTimer()">Reset</button>
+    </div>
+
+    <div class="mode-label">Ambient Noise</div>
+    <div class="ambient-controls">
+        <button id="noiseBtn" onclick="toggleAmbient()">Toggle Rain</button>
+    </div>
+</div>
+
+<script>
+    let timeLeft = 1500;
+    let timerId = null;
+    let isRunning = false;
+    let isWorkMode = true;
+
+    const timeDisplay = document.getElementById('timeDisplay');
+    const modeDisplay = document.getElementById('modeDisplay');
+    const startBtn = document.getElementById('startBtn');
+
+    function updateDisplay() {
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        timeDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    function toggleTimer() {
+        if (isRunning) {
+            clearInterval(timerId);
+            startBtn.textContent = 'Start';
+            isRunning = false;
+        } else {
+            startBtn.textContent = 'Pause';
+            isRunning = true;
+            timerId = setInterval(() => {
+                if (timeLeft > 0) {
+                    timeLeft--;
+                    updateDisplay();
+                } else {
+                    clearInterval(timerId);
+                    isWorkMode = !isWorkMode;
+                    timeLeft = isWorkMode ? 1500 : 300;
+                    modeDisplay.textContent = isWorkMode ? 'Work Time' : 'Break Time';
+                    isRunning = false;
+                    startBtn.textContent = 'Start';
+                    alert(isWorkMode ? 'Break over! Back to work.' : 'Good job! Take a break.');
+                    updateDisplay();
+                }
+            }, 1000);
+        }
+    }
+
+    function resetTimer() {
+        clearInterval(timerId);
+        isRunning = false;
+        isWorkMode = true;
+        timeLeft = 1500;
+        modeDisplay.textContent = 'Work Time';
+        startBtn.textContent = 'Start';
+        updateDisplay();
+    }
+
+    // Procedural Ambient Rain generator via Web Audio API
+    let audioCtx = null;
+    let noiseNode = null;
+    let isNoisePlaying = false;
+
+    function toggleAmbient() {
+        const noiseBtn = document.getElementById('noiseBtn');
+        if (isNoisePlaying) {
+            // FIXED: Explicitly stop the noise node stream and clear references
+            if (noiseNode) {
+                try { noiseNode.stop(); } catch(e) {}
+            }
+            if (audioCtx) audioCtx.close();
+            audioCtx = null;
+            noiseNode = null;
+            isNoisePlaying = false;
+            noiseBtn.classList.remove('active');
+            noiseBtn.textContent = 'Toggle Rain';
+        } else {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Create pink/brownish noise buffer for rain-like sound
+            const bufferSize = audioCtx.sampleRate * 2;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+            
+            for (let i = 0; i < bufferSize; i++) {
+                const white = Math.random() * 2 - 1;
+                b0 = 0.99886 * b0 + white * 0.0555179;
+                b1 = 0.99332 * b1 + white * 0.0750759;
+                b2 = 0.96900 * b2 + white * 0.1538520;
+                b3 = 0.86650 * b3 + white * 0.3104856;
+                b4 = 0.55000 * b4 + white * 0.5329522;
+                b5 = -0.7616 * b5 - white * 0.0168980;
+                data[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+                data[i] *= 0.11; // Volume scale
+                b6 = white * 0.115926;
+            }
+
+            noiseNode = audioCtx.createBufferSource();
+            noiseNode.buffer = buffer;
+            noiseNode.loop = true;
+
+            // Lowpass filter to muffle it into soft ambient rain
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(800, audioCtx.currentTime);
+
+            noiseNode.connect(filter);
+            filter.connect(audioCtx.destination);
+            noiseNode.start();
+
+            isNoisePlaying = true;
+            noiseBtn.classList.add('active');
+            noiseBtn.textContent = 'Stop Rain';
+        }
+    }
+</script>
+
+</body>
+</html>
